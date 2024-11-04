@@ -17,9 +17,9 @@ inter_boundary_line_hsv     = HSVSpace(h_u=50,  h_l=20,  s_u=255, s_l=200, v_u=1
 
 # 定义HSV范围（可以根据实际情况调整）
 HSV_RANGES = {
-    # 'yellow': center_line_hsv,
+    'yellow': center_line_hsv,
     # 'white': side_line_hsv,
-    'pink':buffer_line_hsv,
+    # 'pink':buffer_line_hsv,
     # 'green':inter_boundary_line_hsv
 }
 
@@ -69,29 +69,36 @@ class ImageProcessor:
 
         # 迭代每种颜色
         for hsv in HSV_RANGES.values():
-            mask_img = hsv.apply_mask(hsv_image=cv_hsv_img)
-            self.pub_mask_img(mask_img=mask_img)
+            mask_img = hsv.apply_mask(hsv_image=cv_hsv_img)         
+            overexposed_mask_img = cv2.inRange(cv_hsv_img, (0, 0, 225), (255, 50, 255))  # 亮度阈值，定义过曝
 
-            # 查找过曝区域
-            overexposed_mask_img = cv2.inRange(cv_hsv_img, (0, 0, 225), (255, 60, 255))  # 亮度阈值，定义过曝
-            self.pub_overexposed_mask_img(overexposed_mask_img=overexposed_mask_img)
-    
-            # Find contours of the color and overexposed regions
             color_contours, _ = cv2.findContours(mask_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             overexposed_contours, _ = cv2.findContours(overexposed_mask_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
+
+            self.pub_mask_img(mask_img=mask_img)
+            self.pub_overexposed_mask_img(overexposed_mask_img=overexposed_mask_img)
+
+            # print("Total contours found:", len(color_contours))
+      
             # Process each overexposed contour
             for overexposed_contour in overexposed_contours:
-                # Check if the overexposed contour is connected to any color contour
                 is_connected_to_color = False
                 for color_contour in color_contours:
-                    # Use cv2.pointPolygonTest to check if contours are connected
+                    print(f"Color contour: Type: {type(color_contour)}, Length: {len(color_contour)}, Points: {color_contour}")
                     for point in overexposed_contour:
-                        if cv2.pointPolygonTest(color_contour, tuple(point[0]), False) >= 0:
-                            is_connected_to_color = True
-                            break
+                        print(f"Point: {point[0]}, Type: {type(point[0])}, Shape: {point[0].shape if hasattr(point[0], 'shape') else 'N/A'}")
+                        if isinstance(point[0], (list, np.ndarray)) and len(point[0]) == 2:
+                            pt = tuple(point[0])
+                            print(f"Checking point: {pt}")
+                            if cv2.pointPolygonTest(color_contour, pt, False) >= 0:
+                                is_connected_to_color = True
+                                break
+                        else:
+                            print("Invalid point format:", point[0])
                     if is_connected_to_color:
                         break
+
+            continue
             
             # Only restore areas connected to color contours
             if is_connected_to_color:
