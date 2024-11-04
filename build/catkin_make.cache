@@ -1,0 +1,2 @@
+vpa_host
+-DCATKIN_DEVEL_PREFIX=/home/student/snam_host/devel -DCMAKE_INSTALL_PREFIX=/home/student/snam_host/install -G Unix Makefiles

@@ -1,0 +1,8 @@
+prefix=/home/student/snam_host/install
+
+Name: vpa_host
+Description: Description of vpa_host
+Version: 0.0.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib 
+Requires: 

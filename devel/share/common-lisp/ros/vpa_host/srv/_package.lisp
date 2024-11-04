@@ -1,0 +1,15 @@
+(cl:defpackage vpa_host-srv
+  (:use )
+  (:export
+   "ASSIGNTASK"
+   "<ASSIGNTASK-REQUEST>"
+   "ASSIGNTASK-REQUEST"
+   "<ASSIGNTASK-RESPONSE>"
+   "ASSIGNTASK-RESPONSE"
+   "INTERMNG"
+   "<INTERMNG-REQUEST>"
+   "INTERMNG-REQUEST"
+   "<INTERMNG-RESPONSE>"
+   "INTERMNG-RESPONSE"
+  ))
+
