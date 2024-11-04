@@ -71,28 +71,46 @@ class ImageProcessor:
         for hsv in HSV_RANGES.values():
             mask_img = hsv.apply_mask(hsv_image=cv_hsv_img)
             self.pub_mask_img(mask_img=mask_img)
+
             # 查找过曝区域
             overexposed_mask_img = cv2.inRange(cv_hsv_img, (0, 0, 225), (255, 60, 255))  # 亮度阈值，定义过曝
             self.pub_overexposed_mask_img(overexposed_mask_img=overexposed_mask_img)
-            overexposed_indices = np.where(overexposed_mask_img > 0)
-
-            # # 修复过曝区域
-            # for y, x in zip(*overexposed_indices):
-            #     # 查找该像素周围的非过曝区域
-            #     for dy in range(-5, 6):
-            #         for dx in range(-5, 6):
-            #             ny, nx = y + dy, x + dx
-            #             if 0 <= ny < height and 0 <= nx < width:
-            #                 if mask_img[ny, nx] > 0:  # 如果找到非过曝区域
-            #                     result_image[y, x] = cv_img_raw[ny, nx]  # 替换过曝区域
-            #                     break
+    
+            # Find contours of the color and overexposed regions
+            color_contours, _ = cv2.findContours(mask_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            overexposed_contours, _ = cv2.findContours(overexposed_mask_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-            # 修复过曝区域
-            for y, x in zip(*overexposed_indices):
-                # print(y, x)
-                # print(result_image[y, x])
-                result_image[y, x] = [133, 164, 200]
-                # print(result_image[y, x])
+            # Process each overexposed contour
+            for overexposed_contour in overexposed_contours:
+                # Check if the overexposed contour is connected to any color contour
+                is_connected_to_color = False
+                for color_contour in color_contours:
+                    # Use cv2.pointPolygonTest to check if contours are connected
+                    for point in overexposed_contour:
+                        if cv2.pointPolygonTest(color_contour, tuple(point[0]), False) >= 0:
+                            is_connected_to_color = True
+                            break
+                    if is_connected_to_color:
+                        break
+            
+            # Only restore areas connected to color contours
+            if is_connected_to_color:
+                # Create a mask for the current overexposed contour
+                overexposed_area_mask = np.zeros((height, width), dtype=np.uint8)
+                cv2.drawContours(overexposed_area_mask, [overexposed_contour], -1, 255, thickness=cv2.FILLED)
+                
+                # Find non-overexposed neighbors in the color mask
+                for y, x in zip(*np.where(overexposed_area_mask > 0)):
+                    replaced = False
+                    for dy in range(-5, 6):
+                        if replaced:
+                            break
+                        for dx in range(-5, 6):
+                            ny, nx = y + dy, x + dx
+                            if 0 <= ny < height and 0 <= nx < width and mask_img[ny, nx] > 0:
+                                result_image[y, x] = [0, 255, 0]
+                                replaced = True
+                                break
 
         return result_image
     
