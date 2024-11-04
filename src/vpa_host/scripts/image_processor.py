@@ -3,6 +3,7 @@
 import rospy
 
 import cv2
+import time
 import numpy as np
 from cv_bridge import CvBridge, CvBridgeError
 
@@ -44,7 +45,7 @@ class ImageProcessor:
         rospy.loginfo('Image Processor is Online')
 
     def image_raw_sub_cb(self, data: Image):
-        # the function is supposed to be called at about 10Hz based on fps settins  
+        start_time = time.time()
         try:
             cv_img = self.bridge.imgmsg_to_cv2(data, "bgr8")
         except CvBridgeError as e:
@@ -59,6 +60,10 @@ class ImageProcessor:
         self.pub_cv_img(cv_img=cv_img_raw2)
 
         self.pub_result_cv_img(result_cv_img=result_cv_img)
+
+        end_time = time.time()
+
+        print(f"processing time is: {end_time - start_time:.4f} seconds")
 
         return     
 
