@@ -141,7 +141,7 @@ class SystemMonitor:
         return
 
     def from_cv_to_hsv(self, in_image):
-        return cv2.cvtColor(in_image, cv2.COLOR_RGB2HSV)
+        return cv2.cvtColor(in_image, cv2.COLOR_bgr2hsv)
     
     def get_target_to_cross_conflict(self, cv_img, cv_hsv_img):
         self.next_action = map.local_mapper(last=self.curr_route[0], current=self.curr_route[1], next=self.curr_route[2])

@@ -26,7 +26,7 @@ class HSVSpace:
         return _mask    
 
 def from_cv_to_hsv(in_image):
-    return cv2.cvtColor(in_image, cv2.COLOR_RGB2HSV)
+    return cv2.cvtColor(in_image, cv2.COLOR_bgr2hsv)
 
 def draw_test_mark_at_center(cv_pic):
     

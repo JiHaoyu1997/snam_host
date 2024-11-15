@@ -18,6 +18,9 @@ class BufferManager:
         # TODO: sequence func
         self.robot_buffer_info = []
 
+        # 
+        self.test_mode = rospy.get_param('~test_mode', 'default')
+        
         # Publishers
 
         # Subscribers
@@ -35,14 +38,21 @@ class BufferManager:
     def assign_task_cb(self, req: AssignTaskRequest) -> None:
 
         robot_id = find_id_by_robot_name(req.robot_name)
-        
-        test_task_list = [6, 2, 5, 4, 3, 1, 2, 6]
+
+        if self.test_mode != 'default':
+            test_task_list = self.test_mode_func()
+        else:
+            test_task_list = [6, 2, 5, 4, 3, 1, 2, 6]
 
         resp = AssignTaskResponse(task_list = test_task_list)
 
         rospy.loginfo(f"Assigned {req.robot_name} Task List")
         
         return resp
+    
+    def test_mode_func(self):
+        if self.test_mode == 'left':
+            return [6, 2, 5, 4, 3, 5, 2, 6]
     
 if __name__ == '__main__':
     N = BufferManager()

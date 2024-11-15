@@ -11,17 +11,15 @@ from sensor_msgs.msg import Image
 
 from hsv import HSVSpace
 
-center_line_hsv             = HSVSpace(h_u=105, h_l=65,  s_u=255, s_l=100, v_u=255, v_l=205) 
-side_line_hsv               = HSVSpace(h_u=100, h_l=25,  s_u=60,  s_l=0,   v_u=255, v_l=200) 
-buffer_line_hsv             = HSVSpace(h_u=160, h_l=115, s_u=180, s_l=60, v_u=230, v_l=180) 
-inter_boundary_line_hsv     = HSVSpace(h_u=50,  h_l=20,  s_u=255, s_l=200, v_u=170, v_l=120) 
-
-# 定义HSV范围（可以根据实际情况调整）
 HSV_RANGES = {
-    'yellow': center_line_hsv,
-    # 'white': side_line_hsv,
-    # 'pink':buffer_line_hsv,
-    # 'green':inter_boundary_line_hsv
+    'pink': HSVSpace(h_u=180, h_l=140, s_u=255, s_l=100, v_u=255, v_l=150),
+    'yellow': HSVSpace(h_u=30, h_l=20, s_u=255, s_l=100, v_u=255, v_l=150),
+    'red': HSVSpace(h_u=10, h_l=0, s_u=255, s_l=100, v_u=255, v_l=150),  # 或者 h_u=180, h_l=170
+    'green': HSVSpace(h_u=80, h_l=50, s_u=255, s_l=100, v_u=255, v_l=50),
+    'blue': HSVSpace(h_u=140, h_l=100, s_u=255, s_l=100, v_u=255, v_l=50),
+    'white': HSVSpace(h_u=180, h_l=0, s_u=80, s_l=0, v_u=255, v_l=180),
+    'purple': HSVSpace(h_u=160, h_l=130, s_u=255, s_l=100, v_u=255, v_l=50),
+    'orange': HSVSpace(h_u=25, h_l=10, s_u=255, s_l=100, v_u=255, v_l=150)
 }
 
 class ImageProcessor:
@@ -32,7 +30,7 @@ class ImageProcessor:
         self.result_cv_image_pub = rospy.Publisher("/image_processor/result_cv_image", Image, queue_size=1)
         self.mask_image_pub = rospy.Publisher("/image_processor/mask_image", Image, queue_size=1)
         self.overexposed_mask_image_pub = rospy.Publisher("/image_processor/overexposed_mask_image", Image, queue_size=1)
-        self.image_raw_sub = rospy.Subscriber("/henry/robot_cam/image_raw", Image, self.image_raw_sub_cb)
+        self.image_raw_sub = rospy.Subscriber("/lucas/robot_cam/image_raw", Image, self.image_raw_sub_cb)
         rospy.loginfo('Image Processor is Online')
 
     def image_raw_sub_cb(self, data: Image):
@@ -41,10 +39,10 @@ class ImageProcessor:
             cv_img = self.bridge.imgmsg_to_cv2(data, "bgr8")
             cv_img_raw = cv_img[int(cv_img.shape[0] / 4):, :]  # Crop the image
             cv_img_raw2 = self.adjust_gamma(cv_img=cv_img_raw, gamma=0.5)
-            result_cv_img = self.recover_overexposed_area(cv_img_raw=cv_img_raw2)
+            # result_cv_img = self.recover_overexposed_area(cv_img_raw=cv_img_raw2)
 
             self.pub_cv_img(cv_img=cv_img_raw2)
-            self.pub_result_cv_img(result_cv_img=result_cv_img)
+            # self.pub_result_cv_img(result_cv_img=result_cv_img)
         except CvBridgeError as e:
             rospy.logerr(f"CV Bridge Error: {e}")
         except Exception as e:
@@ -60,13 +58,13 @@ class ImageProcessor:
 
         for hsv in HSV_RANGES.values():
             mask_img = hsv.apply_mask(hsv_image=cv_hsv_img)
-            overexposed_mask_img = cv2.inRange(cv_hsv_img, (0, 0, 225), (255, 50, 255))
+            overexposed_mask_img = cv2.inRange(cv_hsv_img, (0, 0, 205), (255, 60, 255))
 
             color_contours, _ = cv2.findContours(mask_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             overexposed_contours, _ = cv2.findContours(overexposed_mask_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             self.pub_mask_img(mask_img=mask_img)
-            self.pub_overexposed_mask_img(overexposed_mask_img=overexposed_mask_img)
+
 
             for overexposed_contour in overexposed_contours:
                 if self.is_connected_to_color(overexposed_contour, color_contours):
@@ -86,7 +84,10 @@ class ImageProcessor:
     def restore_overexposed_area(self, overexposed_contour, mask_img, result_image, height, width):
         """Restore the overexposed areas in the result image based on nearby color contours."""
         overexposed_area_mask = np.zeros((height, width), dtype=np.uint8)
+
         cv2.drawContours(overexposed_area_mask, [overexposed_contour], -1, 255, thickness=cv2.FILLED)
+
+        self.pub_overexposed_mask_img(overexposed_mask_img=overexposed_area_mask)
 
         for y, x in zip(*np.where(overexposed_area_mask > 0)):
             for dy in range(-5, 6):
@@ -116,7 +117,16 @@ class ImageProcessor:
     def adjust_gamma(self, cv_img, gamma=1.0):
         invGamma = 1.0 / gamma
         lookup_table = np.array([(i / 255.0) ** invGamma * 255 for i in range(256)]).astype("uint8")
-        return cv2.LUT(cv_img, lookup_table)
+        adjusted_img = cv2.LUT(cv_img, lookup_table)
+
+        # hsv_img = cv2.cvtColor(adjusted_img, cv2.COLOR_BGR2HSV)
+        # white_mask = HSV_RANGES['white'].apply_mask(hsv_image=hsv_img)
+        # self.pub_mask_img(mask_img=white_mask)
+        # adjusted_img[white_mask > 0] = cv2.add(adjusted_img[white_mask > 0], (50, 50, 50))
+
+        result_img = cv2.convertScaleAbs(adjusted_img, alpha=1.2, beta=30)
+        
+        return result_img
 
 if __name__ == '__main__':
     try:
