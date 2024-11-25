@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
+
 import numpy as np
 from typing import List, Dict
 
@@ -63,7 +64,7 @@ class InterManager:
         rospy.loginfo('Intersection Manager is Online')
 
         # 定时广播交叉路口信息
-        rospy.Timer(rospy.Duration(0.1), self.broadcast_inter_info)
+        rospy.Timer(rospy.Duration(1 / 10), self.broadcast_inter_info)
 
     def inter_mng_cb(self, req: InterMngRequest) -> InterMngResponse:
         """处理机器人的交叉路口管理请求"""
@@ -83,10 +84,11 @@ class InterManager:
             )
 
             # 构造响应
-            resp = InterMngResponse()
-            resp.success = success
-            resp.message = f'Entry successful' if success else f'Entry denied'
-            return resp
+            if success:
+                resp = InterMngResponse()
+                resp.success = success
+                resp.message = f'Entry successful' if success else f'Entry denied'
+                return resp
             
         except Exception as e:
             rospy.logerr(f'Error processing request: {e}')
@@ -129,7 +131,7 @@ class InterManager:
             rospy.loginfo('Current intersection status:')
             for inter_id, info in self.inter_info_dict.items():
                 if info.robot_id_list:
-                    rospy.loginfo(f'Inter_{inter_id}: {[robot_dict[rid] for rid in info.robot_id_list]}')
+                    rospy.loginfo(f'Inter_{inter_id}: {[robot_dict[id] for id in info.robot_id_list]}')
 
             return True
 

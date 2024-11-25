@@ -9,7 +9,7 @@ from cv_bridge import CvBridge, CvBridgeError
 
 from sensor_msgs.msg import Image
 
-from hsv import HSVSpace
+from vpa_host.scripts.robot.hsv import HSVSpace
 
 HSV_RANGES = {
     'pink': HSVSpace(h_u=180, h_l=140, s_u=255, s_l=100, v_u=255, v_l=150),
