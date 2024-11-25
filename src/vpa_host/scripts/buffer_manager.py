@@ -15,7 +15,6 @@ class BufferManager:
         rospy.init_node('buffer_manager')
 
         # BUFFER_AERA Robot Info
-        # TODO: sequence func
         self.robot_buffer_info = []
 
         # 
@@ -26,7 +25,7 @@ class BufferManager:
         # Subscribers
 
         # Servers
-        task_assign_server = rospy.Service("/assgin_task_srv", AssignTask, self.assign_task_cb) 
+        task_assign_server = rospy.Service("/assign_task_srv", AssignTask, self.assign_task_cb) 
 
         # ServiceProxy
         
@@ -46,13 +45,22 @@ class BufferManager:
 
         resp = AssignTaskResponse(task_list = test_task_list)
 
-        rospy.loginfo(f"Assigned {req.robot_name} Task List")
+        rospy.loginfo(f"Assigned {req.robot_name} Task List: {test_task_list}")
         
         return resp
     
     def test_mode_func(self):
         if self.test_mode == 'left':
-            return [6, 2, 5, 4, 3, 5, 2, 6]
+            return [6, 2, 5, 3, 2, 5, 4, 3, 5, 4, 1, 3, 4, 1, 2, 3, 1, 2, 6]
+        
+        if self.test_mode == 'right':
+            return [6, 2, 1, 3, 2, 1, 4, 3, 1, 4, 5, 3, 4, 5, 2, 3, 5, 2, 6]
+
+        if self.test_mode == 'right':
+            return [6, 2, 5, 4, 1, 2, 3, 5, 2, 1, 4, 5, 2, 6]
+        
+        if self.test_mode == 'test':
+            return [6, 2, 3, 4, 5, 3, 2, 6]
     
 if __name__ == '__main__':
     N = BufferManager()
