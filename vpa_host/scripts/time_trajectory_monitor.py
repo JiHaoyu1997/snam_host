@@ -5,6 +5,7 @@ import rospy
 import numpy as np
 
 from tf.transformations import euler_from_quaternion
+from robot.robot import robot_dict
 
 from apriltag_ros.msg import AprilTagDetectionArray, AprilTagDetection
 
@@ -56,6 +57,11 @@ class TimeTrajectoryMonitor:
 
                 (roll, pitch, yaw) = euler_from_quaternion([_temp_x, _temp_y, _temp_z, _temp_w])
 
+                # Round x, y, and yaw to 3 decimal places
+                x = round(x, 3)
+                y = round(y, 3)
+                yaw = round(yaw, 3)
+
                 pose_data = [secs, nsecs, id, x, y, yaw]
                 pose_data_np = np.array(pose_data)
                 
@@ -64,6 +70,9 @@ class TimeTrajectoryMonitor:
                     self.first_flag = False
                 else:
                     self.pose_data_list = np.vstack((self.pose_data_list, pose_data_np))
+                
+                # Print for easy visualization (optional, can be removed later)
+                rospy.loginfo(f"Robot: {robot_dict[id]}, Time: {secs}.{nsecs}, Position: ({x}, {y}), Yaw: {yaw}")
                           
         return
 
