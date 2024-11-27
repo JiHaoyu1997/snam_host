@@ -15,9 +15,9 @@ class TimeTrajectoryMonitor:
         # Init ROS Node
         rospy.init_node('time_trajectory_monitor')
 
-        self.pose_data_list = np.array((1, 6))
+        self.previous_pose_data_dict = {}
 
-        self.first_flag = True
+        self.pose_data_list = np.empty((0, 6))
 
         # Publishers
 
@@ -44,6 +44,7 @@ class TimeTrajectoryMonitor:
         _num_of_detect = len(_detections)
 
         if _num_of_detect > 0:
+            self.pose_data_list = np.empty((0, 6))
             for i in range(_num_of_detect):
                 _data = _detections[i]
                 id = _data.id[0]
@@ -65,15 +66,47 @@ class TimeTrajectoryMonitor:
                 pose_data = [secs, nsecs, id, x, y, yaw]
                 pose_data_np = np.array(pose_data)
                 
-                if self.first_flag:
-                    self.pose_data_list = pose_data_np
-                    self.first_flag = False
-                else:
-                    self.pose_data_list = np.vstack((self.pose_data_list, pose_data_np))
+                self.pose_data_list = np.vstack((self.pose_data_list, pose_data_np))
                 
                 # Print for easy visualization (optional, can be removed later)
                 rospy.loginfo(f"Robot: {robot_dict[id]}, Time: {secs}.{nsecs}, Position: ({x}, {y}), Yaw: {yaw}")
+
+                if id in self.previous_pose_data_dict:
+                    # Call the function to calculate velocity and direction
+                    self.calculate_velocity_and_direction(self.previous_pose_data_dict[id], pose_data_np, id)
+
+                self.previous_pose_data_dict[id] = pose_data_np
                           
+        return
+
+    def calculate_velocity_and_direction(self, prev_pose, curr_pose, robot_id):
+        """
+        Calculate the robot's velocity and angular velocity.
+        :param prev_pose: The pose data at the previous time step
+        :param curr_pose: The pose data at the current time step
+        :param robot_id: The ID of the robot
+        """
+
+        # Extract previous and current position and yaw
+        prev_x, prev_y, prev_yaw = prev_pose[3], prev_pose[4], prev_pose[5]
+        curr_x, curr_y, curr_yaw = curr_pose[3], curr_pose[4], curr_pose[5]
+
+        # Calculate velocity (Euclidean distance between two points divided by time difference)
+        dt = (curr_pose[0] + curr_pose[1] / 1e9) - (prev_pose[0] + prev_pose[1] / 1e9)  # Time difference in seconds
+        distance = np.sqrt((curr_x - prev_x) ** 2 + (curr_y - prev_y) ** 2)  # Euclidean distance
+        velocity = distance / dt if dt > 0 else 0  # Velocity in m/s
+
+        # Calculate direction (change in yaw)
+        yaw_diff = curr_yaw - prev_yaw
+        if yaw_diff > np.pi:
+            yaw_diff -= 2 * np.pi
+        elif yaw_diff < -np.pi:
+            yaw_diff += 2 * np.pi
+        angular_velocity = yaw_diff / dt if dt > 0 else 0  # Angular velocity in rad/s
+
+        # Print the velocity and angular velocity (direction change rate)
+        rospy.loginfo(f"Robot {robot_id} - Velocity: {velocity:.3f} m/s, Angular Velocity: {angular_velocity:.3f} rad/s")
+
         return
 
 
