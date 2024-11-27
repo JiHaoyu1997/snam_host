@@ -22,10 +22,11 @@ class TaskDispatcher:
 
 
     def generate_all_task_lists(self):
-        src_directory   = os.path.dirname(os.path.realpath(__file__))
+        real_path       = os.path.dirname(os.path.realpath(__file__))
+        src_directory   = os.path.dirname(real_path)
         file_path       = os.path.join(src_directory, "csv", 'tasks.csv')
         file            = open(file_path,'r')
-        data = list(csv.reader(file, delimiter=","))
+        data            = list(csv.reader(file, delimiter=","))
         file.close()
 
         for row in range(len(data)):
