@@ -45,9 +45,11 @@ class TimeTrajectoryMonitor:
 
         if _num_of_detect > 0:
             self.pose_data_list = np.empty((0, 6))
-            for i in range(_num_of_detect):
+            for i in range(_num_of_detect):                               
                 _data = _detections[i]
                 id = _data.id[0]
+                if id == 0:
+                    continue
                 x = _data.pose.pose.pose.position.x
                 y = _data.pose.pose.pose.position.y
 
@@ -69,8 +71,9 @@ class TimeTrajectoryMonitor:
                 self.pose_data_list = np.vstack((self.pose_data_list, pose_data_np))
                 
                 # Print for easy visualization (optional, can be removed later)
-                rospy.loginfo(f"Robot: {robot_dict[id]}, Time: {secs}.{nsecs}, Position: ({x}, {y}), Yaw: {yaw}")
+                rospy.loginfo(f"{robot_dict[id]} --- Time: {secs}.{nsecs}, Position: ({x}, {y}), Yaw: {yaw}")
 
+    
                 if id in self.previous_pose_data_dict:
                     # Call the function to calculate velocity and direction
                     self.calculate_velocity_and_direction(self.previous_pose_data_dict[id], pose_data_np, id)
@@ -90,6 +93,7 @@ class TimeTrajectoryMonitor:
         # Extract previous and current position and yaw
         prev_x, prev_y, prev_yaw = prev_pose[3], prev_pose[4], prev_pose[5]
         curr_x, curr_y, curr_yaw = curr_pose[3], curr_pose[4], curr_pose[5]
+        print(prev_x, curr_x)
 
         # Calculate velocity (Euclidean distance between two points divided by time difference)
         dt = (curr_pose[0] + curr_pose[1] / 1e9) - (prev_pose[0] + prev_pose[1] / 1e9)  # Time difference in seconds
@@ -105,7 +109,7 @@ class TimeTrajectoryMonitor:
         angular_velocity = yaw_diff / dt if dt > 0 else 0  # Angular velocity in rad/s
 
         # Print the velocity and angular velocity (direction change rate)
-        rospy.loginfo(f"Robot {robot_id} - Velocity: {velocity:.3f} m/s, Angular Velocity: {angular_velocity:.3f} rad/s")
+        rospy.loginfo(f"{robot_dict[robot_id]} --- Velocity: {velocity:.3f} m/s, Angular Velocity: {angular_velocity:.3f} rad/s")
 
         return
 

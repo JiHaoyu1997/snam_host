@@ -1,5 +1,5 @@
 robot_dict = {
-    0:'orifin',
+    0:'origin',
     1:'mingna',
     2:'vivian',
     3:'gina',
