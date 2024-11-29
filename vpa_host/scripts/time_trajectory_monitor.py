@@ -1,118 +1,133 @@
 #! /usr/bin/env python3
 
 import rospy
-
+import threading
 import numpy as np
-
 from tf.transformations import euler_from_quaternion
-from robot.robot import robot_dict
-
-from apriltag_ros.msg import AprilTagDetectionArray, AprilTagDetection
+from apriltag_ros.msg import AprilTagDetectionArray
 
 class TimeTrajectoryMonitor:
-
     def __init__(self) -> None:
-        # Init ROS Node
+        # Initialize the ROS node
         rospy.init_node('time_trajectory_monitor')
 
-        self.previous_pose_data_dict = {}
+        # Data storage and thread management
+        self.pose_data_dict = {}  # Historical data for each tag: {robot_id: [(timestamp, x, y, yaw)]}
+        self.velocity_dict = {}  # Smoothed velocity for each tag: {robot_id: (linear_velocity, angular_velocity)}
+        self.lock = threading.Lock()  # Thread lock for data synchronization
 
-        self.pose_data_list = np.empty((0, 6))
-
-        # Publishers
-
-
-        # Subscribers
+        # Subscriber
         self.pose_array_sub = rospy.Subscriber('/indoor_loc/tag_detections', AprilTagDetectionArray, self.pose_array_sub_cb)
 
-
-        # Servers
-
-
-        # ServiceProxy
-
+        # Start a separate thread to calculate velocities
+        self.compute_thread = threading.Thread(target=self.compute_velocity_loop)
+        self.compute_thread.daemon = True
+        self.compute_thread.start()
 
         rospy.loginfo('System Monitor is Online')
 
+    def pose_array_sub_cb(self, msg: AprilTagDetectionArray):
+        """
+        Callback function for the AprilTag detection topic.
+        Extracts information for all detected tags and stores it.
+        """
+        if len(msg.detections) == 0:
+            return  # Skip if no tags are detected
 
-    def pose_array_sub_cb(self, msg: AprilTagDetectionArray):        
+        # Extract timestamp
         secs = msg.header.stamp.secs
         nsecs = msg.header.stamp.nsecs
+        timestamp = secs + nsecs / 1e9  # Convert to seconds
 
-        _detections = AprilTagDetection()
-        _detections = msg.detections
-        _num_of_detect = len(_detections)
+        # Iterate through all detected tags and update their data
+        with self.lock:
+            for detection in msg.detections:
+                tag_id = detection.id[0]
+                robot_id = tag_id
+                x = detection.pose.pose.pose.position.x
+                y = detection.pose.pose.pose.position.y
 
-        if _num_of_detect > 0:
-            self.pose_data_list = np.empty((0, 6))
-            for i in range(_num_of_detect):
-                _data = _detections[i]
-                id = _data.id[0]
-                x = _data.pose.pose.pose.position.x
-                y = _data.pose.pose.pose.position.y
-
-                _temp_x = _data.pose.pose.pose.orientation.x
-                _temp_y = _data.pose.pose.pose.orientation.y
-                _temp_z = _data.pose.pose.pose.orientation.z
-                _temp_w = _data.pose.pose.pose.orientation.w
-
-                (roll, pitch, yaw) = euler_from_quaternion([_temp_x, _temp_y, _temp_z, _temp_w])
+                # Extract yaw from orientation quaternion
+                _qx = detection.pose.pose.pose.orientation.x
+                _qy = detection.pose.pose.pose.orientation.y
+                _qz = detection.pose.pose.pose.orientation.z
+                _qw = detection.pose.pose.pose.orientation.w
+                _, _, yaw = euler_from_quaternion([_qx, _qy, _qz, _qw])
 
                 # Round x, y, and yaw to 3 decimal places
-                x = round(x, 3)
-                y = round(y, 3)
-                yaw = round(yaw, 3)
+                x, y, yaw = round(x, 3), round(y, 3), round(yaw, 3)
 
-                pose_data = [secs, nsecs, id, x, y, yaw]
-                pose_data_np = np.array(pose_data)
-                
-                self.pose_data_list = np.vstack((self.pose_data_list, pose_data_np))
-                
-                # Print for easy visualization (optional, can be removed later)
-                rospy.loginfo(f"Robot: {robot_dict[id]}, Time: {secs}.{nsecs}, Position: ({x}, {y}), Yaw: {yaw}")
+                # Initialize or update tag data
+                if robot_id not in self.pose_data_dict:
+                    self.pose_data_dict[robot_id] = []
+                    self.velocity_dict[robot_id] = (0.0, 0.0)  # Linear and angular velocities
 
-                if id in self.previous_pose_data_dict:
-                    # Call the function to calculate velocity and direction
-                    self.calculate_velocity_and_direction(self.previous_pose_data_dict[id], pose_data_np, id)
+                self.pose_data_dict[robot_id].append((timestamp, x, y, yaw))
+                if len(self.pose_data_dict[robot_id]) > 10:  # Limit buffer length to 10
+                    self.pose_data_dict[robot_id].pop(0)
 
-                self.previous_pose_data_dict[id] = pose_data_np
-                          
-        return
-
-    def calculate_velocity_and_direction(self, prev_pose, curr_pose, robot_id):
+    def compute_velocity_loop(self):
         """
-        Calculate the robot's velocity and angular velocity.
-        :param prev_pose: The pose data at the previous time step
-        :param curr_pose: The pose data at the current time step
-        :param robot_id: The ID of the robot
+        Continuously computes velocities for all tracked tags in a separate thread.
         """
+        ewma_alpha = 0.6  # EWMA smoothing factor
+        rate = rospy.Rate(3)  # Execute at 3 Hz
+        while not rospy.is_shutdown():
+            with self.lock:
+                for robot_id, pose_data in self.pose_data_dict.items():
+                    if len(pose_data) < 10:
+                        continue  # Skip computation if less than 10 data points
 
-        # Extract previous and current position and yaw
-        prev_x, prev_y, prev_yaw = prev_pose[3], prev_pose[4], prev_pose[5]
-        curr_x, curr_y, curr_yaw = curr_pose[3], curr_pose[4], curr_pose[5]
+                    # Initialize cumulative displacement and time
+                    initial_time, initial_x, initial_y, initial_yaw = pose_data[0]
+                    total_displacement_x = 0.0
+                    total_displacement_y = 0.0
+                    total_time = 0.0
 
-        # Calculate velocity (Euclidean distance between two points divided by time difference)
-        dt = (curr_pose[0] + curr_pose[1] / 1e9) - (prev_pose[0] + prev_pose[1] / 1e9)  # Time difference in seconds
-        distance = np.sqrt((curr_x - prev_x) ** 2 + (curr_y - prev_y) ** 2)  # Euclidean distance
-        velocity = distance / dt if dt > 0 else 0  # Velocity in m/s
+                    # Iterate through consecutive pose data and calculate displacement between consecutive points
+                    for i in range(1, len(pose_data)):
+                        curr_time, curr_x, curr_y, curr_yaw = pose_data[i]
+                        
+                        # Calculate time difference
+                        delta_time = curr_time - initial_time
+                        if delta_time <= 0:
+                            continue  # Skip if no valid time difference
 
-        # Calculate direction (change in yaw)
-        yaw_diff = curr_yaw - prev_yaw
-        if yaw_diff > np.pi:
-            yaw_diff -= 2 * np.pi
-        elif yaw_diff < -np.pi:
-            yaw_diff += 2 * np.pi
-        angular_velocity = yaw_diff / dt if dt > 0 else 0  # Angular velocity in rad/s
+                        # Calculate displacement (change between consecutive positions)
+                        delta_x = curr_x - pose_data[i-1][1]  # Difference between current x and previous x
+                        delta_y = curr_y - pose_data[i-1][2]  # Difference between current y and previous y
 
-        # Print the velocity and angular velocity (direction change rate)
-        rospy.loginfo(f"Robot {robot_id} - Velocity: {velocity:.3f} m/s, Angular Velocity: {angular_velocity:.3f} rad/s")
+                        # Accumulate displacement and time
+                        total_displacement_x += delta_x
+                        total_displacement_y += delta_y
+                        total_time += delta_time
+                        initial_time = curr_time  # Update reference time for next calculation
 
-        return
+                    if total_time > 0:
+                        # Calculate linear velocity using the total displacement and total time
+                        linear_velocity = np.sqrt(total_displacement_x ** 2 + total_displacement_y ** 2) / total_time
 
+                        # Calculate angular velocity (yaw change)
+                        yaw_difference = pose_data[-1][3] - pose_data[0][3]
+                        yaw_difference = (yaw_difference + np.pi) % (2 * np.pi) - np.pi  # Normalize yaw
+                        angular_velocity = yaw_difference / total_time
+
+                        # Apply EWMA for smoothing
+                        smoothed_linear_velocity = ewma_alpha * linear_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][0]
+                        smoothed_angular_velocity = ewma_alpha * angular_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][1]
+
+                        # Update velocity dictionary
+                        self.velocity_dict[robot_id] = (smoothed_linear_velocity, smoothed_angular_velocity)
+
+                        # Log the computation results
+                        rospy.loginfo(f"Tag ID: {robot_id} - Linear Velocity: {smoothed_linear_velocity:.3f} m/s, "
+                                    f"Angular Velocity: {smoothed_angular_velocity:.3f} rad/s")
+
+            rate.sleep()
 
 if __name__ == '__main__':
     try:
-        N = TimeTrajectoryMonitor()
-        rospy.spin() 
+        monitor = TimeTrajectoryMonitor()
+        rospy.spin()
     except rospy.ROSInterruptException:
         pass
