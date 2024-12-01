@@ -5,6 +5,7 @@ import threading
 import numpy as np
 from tf.transformations import euler_from_quaternion
 from apriltag_ros.msg import AprilTagDetectionArray
+from vpa_host.msg import KinematicData, KinematicDataArray
 
 class TimeTrajectoryMonitor:
     def __init__(self) -> None:
@@ -15,6 +16,9 @@ class TimeTrajectoryMonitor:
         self.pose_data_dict = {}  # Historical data for each tag: {robot_id: [(timestamp, x, y, yaw)]}
         self.velocity_dict = {}  # Smoothed velocity for each tag: {robot_id: (linear_velocity, angular_velocity)}
         self.lock = threading.Lock()  # Thread lock for data synchronization
+
+        # Publisher
+        self.kinematic_info_pub = rospy.Publisher('/kinematic_info', _, queue_size=10)
 
         # Subscriber
         self.pose_array_sub = rospy.Subscriber('/indoor_loc/tag_detections', AprilTagDetectionArray, self.pose_array_sub_cb)
@@ -71,7 +75,7 @@ class TimeTrajectoryMonitor:
         Continuously computes velocities for all tracked tags in a separate thread.
         """
         ewma_alpha = 0.6  # EWMA smoothing factor
-        rate = rospy.Rate(3)  # Execute at 3 Hz
+        rate = rospy.Rate(2)  # Execute at 2 Hz
         while not rospy.is_shutdown():
             with self.lock:
                 for robot_id, pose_data in self.pose_data_dict.items():
@@ -80,6 +84,7 @@ class TimeTrajectoryMonitor:
 
                     # Initialize cumulative displacement and time
                     initial_time, initial_x, initial_y, initial_yaw = pose_data[0]
+                    end_yaw = pose_data[-1][3]
                     total_displacement_x = 0.0
                     total_displacement_y = 0.0
                     total_time = 0.0
@@ -108,7 +113,7 @@ class TimeTrajectoryMonitor:
                         linear_velocity = np.sqrt(total_displacement_x ** 2 + total_displacement_y ** 2) / total_time
 
                         # Calculate angular velocity (yaw change)
-                        yaw_difference = pose_data[-1][3] - pose_data[0][3]
+                        yaw_difference = end_yaw - initial_yaw
                         yaw_difference = (yaw_difference + np.pi) % (2 * np.pi) - np.pi  # Normalize yaw
                         angular_velocity = yaw_difference / total_time
 
@@ -124,6 +129,30 @@ class TimeTrajectoryMonitor:
                                     f"Angular Velocity: {smoothed_angular_velocity:.3f} rad/s")
 
             rate.sleep()
+    
+    def pub_kinematic_data(self):
+        kinematic_data_msg = KinematicDataArray()
+
+        for robot_id, pose_data_list in self.pose_data_dict.items():
+            if not pose_data_list:
+                continue
+
+            if not self.velocity_dict[robot_id]:
+                continue
+
+            timestamp, x, y, yaw = pose_data_list[-1]
+            linear_velocity, angular_velocity = self.velocity_dict[robot_id]
+
+            kinematic_data = KinematicData()
+            kinematic_data.robot_id = robot_id
+            kinematic_data.pose     = (timestamp, x, y, yaw)
+            kinematic_data.vel      = (linear_velocity, angular_velocity)
+
+            # 将 KinematicData 添加到 KinematicDataArray 中
+            kinematic_data_msg.data.append(kinematic_data)
+
+        # 发布数据
+        self.kinematic_data_pub.publish(kinematic_data_msg)
 
 if __name__ == '__main__':
     try:
