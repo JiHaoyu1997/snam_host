@@ -1,9 +1,13 @@
 #! /usr/bin/env python3
 
 import rospy
+
 import threading
 import numpy as np
 from tf.transformations import euler_from_quaternion
+
+from robot.robot import robot_dict
+
 from apriltag_ros.msg import AprilTagDetectionArray
 from vpa_host.msg import KinematicData, KinematicDataArray
 
@@ -59,7 +63,7 @@ class TimeTrajectoryMonitor:
                 _, _, yaw = euler_from_quaternion([_qx, _qy, _qz, _qw])
 
                 # Round x, y, and yaw to 3 decimal places
-                x, y, yaw = round(x, 3), round(y, 3), round(yaw, 3)
+                # x, y, yaw = round(x, 3), round(y, 3), round(yaw, 3)
 
                 # Initialize or update tag data
                 if robot_id not in self.pose_data_dict:
@@ -125,8 +129,8 @@ class TimeTrajectoryMonitor:
                         self.velocity_dict[robot_id] = (smoothed_linear_velocity, smoothed_angular_velocity)
 
                         # Log the computation results
-                        rospy.loginfo(f"Tag ID: {robot_id} - Linear Velocity: {smoothed_linear_velocity:.3f} m/s, "
-                                    f"Angular Velocity: {smoothed_angular_velocity:.3f} rad/s")
+                        if robot_id != 0:
+                            rospy.loginfo(f"{robot_dict[robot_id]} - Linear Velocity: {smoothed_linear_velocity:.3f} m/s, Angular Velocity: {smoothed_angular_velocity:.3f} rad/s")
 
             rate.sleep()
     

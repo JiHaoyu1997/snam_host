@@ -17,7 +17,7 @@ class BufferManager:
         rospy.init_node('buffer_manager')
 
         # 
-        task_dispatcher = TaskDispatcher()
+        self.task_dispatcher = TaskDispatcher()
 
 
         # BUFFER_AERA Robot Info
@@ -47,7 +47,11 @@ class BufferManager:
     # Methods
     def assign_task_cb(self, req: AssignTaskRequest) -> None:
         robot_name = req.robot_name
-        task_list = TaskDispatcher.assign_task_list(test_mode=self.test_mode)
+        
+        if robot_name not in self.robot_buffer_info:
+            self.robot_buffer_info[robot_name] = {'task_list': []}
+
+        task_list = self.task_dispatcher.assign_task_list(test_mode=self.test_mode)
         self.robot_buffer_info[robot_name]['task_list'] = task_list
         resp = AssignTaskResponse(task_list = task_list)
         rospy.loginfo(f"Assigned {robot_name} Task List: {task_list}")        
