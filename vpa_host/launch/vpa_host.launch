@@ -1,8 +1,9 @@
 <launch>
-    <arg name="test_mode"       default="default"/> 
+    <arg name="test_mode" default="default"/> 
     <node pkg="vpa_host" name="buffer_manager" type="buffer_manager.py" output="screen">
         <param name="test_mode" value="$(arg test_mode)" />
     </node>
     <node pkg="vpa_host" name="inter_manager" type="inter_manager.py" output="screen"/>
-    <!-- <node pkg="vpa_host" name="system_monitor" type="system_monitor.py" output="screen"/> -->
+    <node pkg="vpa_host" name="system_monitor" type="system_monitor.py" output="screen"/>
+    <node pkg="vpa_host" name="time_trajectory_monitor" type="time_trajectory_monitor.py" output="screen"/>
 </launch>
