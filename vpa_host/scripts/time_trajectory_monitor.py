@@ -22,7 +22,7 @@ class TimeTrajectoryMonitor:
         self.lock = threading.Lock()  # Thread lock for data synchronization
 
         # Publisher
-        self.kinematic_info_pub = rospy.Publisher('/kinematic_info', _, queue_size=10)
+        self.kinematic_info_pub = rospy.Publisher('/kinematic_info', KinematicDataArray, queue_size=10)
 
         # Subscriber
         self.pose_array_sub = rospy.Subscriber('/indoor_loc/tag_detections', AprilTagDetectionArray, self.pose_array_sub_cb)
@@ -34,7 +34,7 @@ class TimeTrajectoryMonitor:
 
         rospy.loginfo('System Monitor is Online')
 
-        self.timer = rospy.Timer(rospy.Duration(1 / 10), self.pub_kinematic_data)
+        self.timer = rospy.Timer(rospy.Duration(1), self.pub_kinematic_data)
 
     def pose_array_sub_cb(self, msg: AprilTagDetectionArray):
         """
@@ -65,7 +65,7 @@ class TimeTrajectoryMonitor:
                 _, _, yaw = euler_from_quaternion([_qx, _qy, _qz, _qw])
 
                 # Round x, y, and yaw to 3 decimal places
-                # x, y, yaw = round(x, 3), round(y, 3), round(yaw, 3)
+                x, y, yaw = round(x, 2), round(y, 2), round(yaw, 2)
 
                 # Initialize or update tag data
                 if robot_id not in self.pose_data_dict:
@@ -127,10 +127,10 @@ class TimeTrajectoryMonitor:
                         smoothed_linear_velocity = ewma_alpha * linear_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][0]
                         smoothed_angular_velocity = ewma_alpha * angular_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][1]
 
-                        if abs(smoothed_linear_velocity) < 0.001:
+                        if abs(smoothed_linear_velocity) < 0.005:
                             smoothed_linear_velocity = 0
                         
-                        if abs(smoothed_angular_velocity) < 0.001:
+                        if abs(smoothed_angular_velocity) < 0.005:
                             smoothed_angular_velocity = 0
 
                         # Update velocity dictionary
@@ -142,7 +142,7 @@ class TimeTrajectoryMonitor:
 
             rate.sleep()
     
-    def pub_kinematic_data(self):
+    def pub_kinematic_data(self, event):
         kinematic_data_msg = KinematicDataArray()
 
         for robot_id, pose_data_list in self.pose_data_dict.items():
@@ -164,7 +164,7 @@ class TimeTrajectoryMonitor:
             kinematic_data_msg.data.append(kinematic_data)
 
         # 发布数据
-        self.kinematic_data_pub.publish(kinematic_data_msg)
+        self.kinematic_info_pub.publish(kinematic_data_msg)
 
 if __name__ == '__main__':
     try:
