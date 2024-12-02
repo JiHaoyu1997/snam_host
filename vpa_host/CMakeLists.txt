@@ -50,6 +50,8 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   InterInfo.msg
+  KinematicData.msg
+  KinematicDataArray.msg
   RobotInfo.msg
 )
 

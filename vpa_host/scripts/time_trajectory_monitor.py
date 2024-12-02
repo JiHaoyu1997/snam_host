@@ -34,6 +34,8 @@ class TimeTrajectoryMonitor:
 
         rospy.loginfo('System Monitor is Online')
 
+        self.timer = rospy.Timer(rospy.Duration(1 / 10), self.pub_kinematic_data)
+
     def pose_array_sub_cb(self, msg: AprilTagDetectionArray):
         """
         Callback function for the AprilTag detection topic.
@@ -124,6 +126,12 @@ class TimeTrajectoryMonitor:
                         # Apply EWMA for smoothing
                         smoothed_linear_velocity = ewma_alpha * linear_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][0]
                         smoothed_angular_velocity = ewma_alpha * angular_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][1]
+
+                        if abs(smoothed_linear_velocity) < 0.001:
+                            smoothed_linear_velocity = 0
+                        
+                        if abs(smoothed_angular_velocity) < 0.001:
+                            smoothed_angular_velocity = 0
 
                         # Update velocity dictionary
                         self.velocity_dict[robot_id] = (smoothed_linear_velocity, smoothed_angular_velocity)
