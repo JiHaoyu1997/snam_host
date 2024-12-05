@@ -4,11 +4,13 @@ import rospy
 
 import threading
 import numpy as np
+import matplotlib.pyplot as plt
 from tf.transformations import euler_from_quaternion
 
 from robot.robot import robot_dict
 
 from apriltag_ros.msg import AprilTagDetectionArray
+from vpa_robot_interface.msg import WheelsEncoder
 from vpa_host.msg import KinematicData, KinematicDataArray
 
 class TimeTrajectoryMonitor:
@@ -20,6 +22,7 @@ class TimeTrajectoryMonitor:
         self.pose_data_dict = {}  # Historical data for each tag: {robot_id: [(timestamp, x, y, yaw)]}
         self.velocity_dict = {}  # Smoothed velocity for each tag: {robot_id: (linear_velocity, angular_velocity)}
         self.max_velocity_dict = {}
+        self.zero_vel_counter = 0
         self.lock = threading.Lock()  # Thread lock for data synchronization
 
         # Publisher
@@ -35,7 +38,8 @@ class TimeTrajectoryMonitor:
 
         rospy.loginfo('System Monitor is Online')
 
-        self.timer = rospy.Timer(rospy.Duration(1 / 10), self.pub_kinematic_data)
+        self.timer = rospy.Timer(rospy.Duration(1 / 20), self.pub_kinematic_data)
+
 
     def pose_array_sub_cb(self, msg: AprilTagDetectionArray):
         """
@@ -73,20 +77,10 @@ class TimeTrajectoryMonitor:
                 if robot_id not in self.pose_data_dict:
                     self.pose_data_dict[robot_id] = []
                     self.velocity_dict[robot_id] = (0.0, 0.0)  # Linear and angular velocities
-                    self.smoothed_pose = {}  # For static smoothing
-                    self.smoothed_pose[robot_id] = (x, y, yaw)
 
-                # Low-pass filter for smoothing positions
-                if robot_id in self.smoothed_pose:
-                    prev_x, prev_y, prev_yaw = self.smoothed_pose[robot_id]
-                    alpha = 0.5  # Smoothing factor for low-pass filter
-                    x = alpha * x + (1 - alpha) * prev_x
-                    y = alpha * y + (1 - alpha) * prev_y
-                    yaw = alpha * yaw + (1 - alpha) * prev_yaw
-                    self.smoothed_pose[robot_id] = (x, y, yaw)
                 
                 # Round x, y, and yaw to 3 decimal places
-                x, y, yaw = round(x, 4), round(y, 4), round(yaw, 4)
+                x, y, yaw = round(x, 3), round(y, 3), round(yaw, 3)
 
                 self.pose_data_dict[robot_id].append((timestamp, x, y, yaw))
                 if len(self.pose_data_dict[robot_id]) > 10:  # Limit buffer length to 10
@@ -96,14 +90,16 @@ class TimeTrajectoryMonitor:
         """
         Continuously computes velocities for all tracked tags in a separate thread.
         """
-        ewma_alpha = 0.6  # EWMA smoothing factor
-        rate = rospy.Rate(10)  # Execute at 2 Hz
+        ewma_alpha = 1  # EWMA smoothing factor
+        rate = rospy.Rate(10)
+        reset_threshold = 3 / rate.sleep_dur.to_sec()
         
         while not rospy.is_shutdown():
             with self.lock:
                 for robot_id, pose_data in self.pose_data_dict.items():
+                    # Skip computation if less than 10 data points
                     if len(pose_data) < 10:
-                        continue  # Skip computation if less than 10 data points
+                        continue 
 
                     # Initialize cumulative displacement and time
                     initial_time, initial_x, initial_y, initial_yaw = pose_data[0]
@@ -143,16 +139,16 @@ class TimeTrajectoryMonitor:
                         smoothed_linear_velocity = ewma_alpha * linear_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][0]
                         smoothed_angular_velocity = ewma_alpha * angular_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][1]
 
-                        if abs(smoothed_linear_velocity) < 0.005:
+                        if abs(smoothed_linear_velocity) < 0.01:
                             smoothed_linear_velocity = 0
 
-                        if abs(smoothed_angular_velocity) < 0.005:
+                        if abs(smoothed_angular_velocity) < 0.02:
                             smoothed_angular_velocity = 0
 
                         # Update velocity dictionary
                         self.velocity_dict[robot_id] = (smoothed_linear_velocity, smoothed_angular_velocity)
 
-                        # 更新最大值记录
+                        # Update max vel record
                         if robot_id not in self.max_velocity_dict:
                             self.max_velocity_dict[robot_id] = (0.0, 0.0)
 
@@ -161,6 +157,14 @@ class TimeTrajectoryMonitor:
                             max(smoothed_linear_velocity, max_linear_velocity),
                             max(abs(smoothed_angular_velocity), max_angular_velocity),
                         )
+
+                        if smoothed_linear_velocity == 0:
+                            self.zero_vel_counter += 1
+                        else:
+                            self.zero_vel_counter = 0
+                        
+                        if self.zero_vel_counter >= reset_threshold:
+                            self.max_velocity_dict[robot_id] = (0.0, 0.0)
 
                         # Log the computation results
                         if robot_id != 0:
@@ -182,16 +186,17 @@ class TimeTrajectoryMonitor:
 
             pose_data_array = np.array(pose_data_list)   
 
-            # timestamp, x, y, yaw = pose_data_list[-1]
-            timestamp = pose_data_array[-1, 0] 
-            avg_x   = np.round(np.mean(pose_data_array[:, 1]), 3)
-            avg_y   = np.round(np.mean(pose_data_array[:, 2]), 3)
-            avg_yaw = np.round(np.mean(pose_data_array[:, 3]), 3)
+            timestamp, x, y, yaw = pose_data_list[-1]
+            # timestamp = pose_data_array[-1, 0] 
+            # avg_x   = np.round(np.mean(pose_data_array[:, 1]), 3)
+            # avg_y   = np.round(np.mean(pose_data_array[:, 2]), 3)
+            # avg_yaw = np.round(np.mean(pose_data_array[:, 3]), 3)
             linear_velocity, angular_velocity = self.velocity_dict[robot_id]
 
             kinematic_data = KinematicData()
             kinematic_data.robot_id = robot_id
-            kinematic_data.pose     = (timestamp, avg_x, avg_y, avg_yaw)
+            kinematic_data.pose     = (timestamp, x, y, yaw)
+            # kinematic_data.pose     = (timestamp, avg_x, avg_y, avg_yaw)
             kinematic_data.vel      = (linear_velocity, angular_velocity)
 
             # 将 KinematicData 添加到 KinematicDataArray 中
@@ -199,6 +204,7 @@ class TimeTrajectoryMonitor:
 
         # 发布数据
         self.kinematic_info_pub.publish(kinematic_data_msg)
+
 
 if __name__ == '__main__':
     try:

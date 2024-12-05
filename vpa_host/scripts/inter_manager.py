@@ -9,15 +9,17 @@ from robot.robot import robot_dict, find_id_by_robot_name
 
 from vpa_host.msg import RobotInfo as RobotInfoMsg
 from vpa_host.msg import InterInfo as InterInfoMsg
+from vpa_host.msg import KinematicDataArray
 from vpa_host.srv import InterMng, InterMngRequest, InterMngResponse
 
 class RobotInfo:
-    def __init__(self, name="", id=0, a=0.0, v=0.0, p=0.0, enter_time=0.0, arrive_cp_time=0.0, exit_time=0.0):
+    def __init__(self, name="", id=0, a=0.0, v=0.0, p=0.0, coordinate=(0.0, 0,0), enter_time=0.0, arrive_cp_time=0.0, exit_time=0.0):
         self.robot_name = name
         self.robot_id = id
         self.robot_a = a  # 加速度
         self.robot_v = v  # 速度
         self.robot_p = p  # 位置
+        self.robot_coordinate = coordinate #zuobiao
         self.robot_enter_time = enter_time
         self.robot_arrive_cp_time = arrive_cp_time
         self.robot_exit_time = exit_time
@@ -31,6 +33,7 @@ class RobotInfo:
             a=msg.robot_a,
             v=msg.robot_v,
             p=msg.robot_p,
+            coordinate=msg.robot_coordinate,
             enter_time=msg.robot_enter_time,
             arrive_cp_time=msg.robot_arrive_cp_time,
             exit_time=msg.robot_exit_time
@@ -45,18 +48,16 @@ class InterInfo:
 class InterManager:
 
     def __init__(self) -> None:
-        # 初始化ROS节点
         rospy.init_node('inter_manager')
 
-        # 初始化交叉路口信息
         self.inter_info_dict: Dict[int, InterInfo] = {i: InterInfo(i) for i in range(1, 6)}
 
+
         # Publishers
-        # 为每个交叉路口创建一个publisher
-        self.inter_info_pubs = {
-            i: rospy.Publisher(f'inter_info/{i}', InterInfoMsg, queue_size=1)
-            for i in range(1, 6)
-        }
+        self.inter_info_pubs = {i: rospy.Publisher(f'inter_info/{i}', InterInfoMsg, queue_size=1) for i in range(1, 6)}
+
+        # Subscribers
+        self.kinematic_info_sub = rospy.Subscriber('/kinematic_info', KinematicDataArray, self.kinematic_info_cb)
 
         # Servers
         self.inter_mng_server = rospy.Service('/inter_mng_srv', InterMng, self.inter_mng_cb)
@@ -97,9 +98,13 @@ class InterManager:
             resp.message = f'Error: {str(e)}'
             return resp
 
-    def update_inter_info(self, robot_info: RobotInfo, 
-                         from_inter: int, to_inter: int, 
-                         timestamp: rospy.Time) -> bool:
+    def update_inter_info(
+            self, 
+            robot_info: RobotInfo, 
+            from_inter: int, 
+            to_inter: int, 
+            timestamp: rospy.Time
+        ) -> bool:
         """更新交叉路口信息"""
         try:
             # 从原交叉路口移除机器人
@@ -157,6 +162,7 @@ class InterManager:
                     robot_a=info.robot_a,
                     robot_v=info.robot_v,
                     robot_p=info.robot_p,
+                    robot_coordinate = info.robot_coordinate,
                     robot_enter_time=info.robot_enter_time,
                     robot_arrive_cp_time=info.robot_arrive_cp_time,
                     robot_exit_time=info.robot_exit_time
@@ -166,6 +172,24 @@ class InterManager:
             # 发布消息
             if inter_id in self.inter_info_pubs:
                 self.inter_info_pubs[inter_id].publish(msg)
+    
+    def kinematic_info_cb(self, kinematic_data_msg: KinematicDataArray):
+        """
+        Annotation
+        """
+        for data in kinematic_data_msg.data:
+            robot_id = data.robot_id
+            robot_coordinate = (data.pose[1], data.pose[2])
+            robot_v = data.vel[0]
+
+            for inter_info in self.inter_info_dict.values():
+                if robot_id in inter_info.robot_id_list:
+                    for robot_info in inter_info.robot_info:
+                        if robot_info.robot_id == robot_id:
+                            robot_info.robot_coordinate = robot_coordinate
+                            robot_info.robot_v = robot_v
+                            break
+
 
 if __name__ == '__main__':
     T = InterManager()
