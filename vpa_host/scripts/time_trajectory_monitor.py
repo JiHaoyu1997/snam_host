@@ -36,7 +36,7 @@ class TimeTrajectoryMonitor:
         self.compute_thread.daemon = True
         self.compute_thread.start()
 
-        rospy.loginfo('System Monitor is Online')
+        rospy.loginfo('Time Trajectory Monitor is Online')
 
         self.timer = rospy.Timer(rospy.Duration(1 / 20), self.pub_kinematic_data)
 
@@ -139,10 +139,10 @@ class TimeTrajectoryMonitor:
                         smoothed_linear_velocity = ewma_alpha * linear_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][0]
                         smoothed_angular_velocity = ewma_alpha * angular_velocity + (1 - ewma_alpha) * self.velocity_dict[robot_id][1]
 
-                        if abs(smoothed_linear_velocity) < 0.01:
+                        if abs(smoothed_linear_velocity) < 0.05:
                             smoothed_linear_velocity = 0
 
-                        if abs(smoothed_angular_velocity) < 0.02:
+                        if abs(smoothed_angular_velocity) < 0.05:
                             smoothed_angular_velocity = 0
 
                         # Update velocity dictionary
@@ -166,10 +166,10 @@ class TimeTrajectoryMonitor:
                         if self.zero_vel_counter >= reset_threshold:
                             self.max_velocity_dict[robot_id] = (0.0, 0.0)
 
-                        # Log the computation results
-                        if robot_id != 0:
-                            rospy.loginfo(f"{robot_dict[robot_id]} - Linear Velocity: {smoothed_linear_velocity:.3f} m/s, Angular Velocity: {smoothed_angular_velocity:.3f} rad/s")
-                            rospy.loginfo(f"{robot_dict[robot_id]} - Max Linear Velocity: {self.max_velocity_dict[robot_id][0]:.3f} m/s, Max Angular Velocity: {self.max_velocity_dict[robot_id][1]:.3f} rad/s")
+                        # # Log the computation results
+                        # if robot_id != 0:
+                        #     rospy.loginfo(f"{robot_dict[robot_id]} - Linear Velocity: {smoothed_linear_velocity:.3f} m/s, Angular Velocity: {smoothed_angular_velocity:.3f} rad/s")
+                        #     rospy.loginfo(f"{robot_dict[robot_id]} - Max Linear Velocity: {self.max_velocity_dict[robot_id][0]:.3f} m/s, Max Angular Velocity: {self.max_velocity_dict[robot_id][1]:.3f} rad/s")
 
             rate.sleep()
 

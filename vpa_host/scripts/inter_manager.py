@@ -2,61 +2,51 @@
 
 import rospy
 
+import threading
 import numpy as np
 from typing import List, Dict
 
-from robot.robot import robot_dict, find_id_by_robot_name
+from robot.robot import robot_dict, RobotInfo
 
 from vpa_host.msg import RobotInfo as RobotInfoMsg
 from vpa_host.msg import InterInfo as InterInfoMsg
 from vpa_host.msg import KinematicDataArray
 from vpa_host.srv import InterMng, InterMngRequest, InterMngResponse
 
-class RobotInfo:
-    def __init__(self, name="", id=0, a=0.0, v=0.0, p=0.0, coordinate=(0.0, 0,0), enter_time=0.0, arrive_cp_time=0.0, exit_time=0.0):
-        self.robot_name = name
-        self.robot_id = id
-        self.robot_a = a  # 加速度
-        self.robot_v = v  # 速度
-        self.robot_p = p  # 位置
-        self.robot_coordinate = coordinate #zuobiao
-        self.robot_enter_time = enter_time
-        self.robot_arrive_cp_time = arrive_cp_time
-        self.robot_exit_time = exit_time
-
-    @classmethod
-    def from_msg(cls, msg: RobotInfoMsg):
-        """从ROS消息创建RobotInfo实例"""
-        return cls(
-            name=msg.robot_name,
-            id=msg.robot_id,
-            a=msg.robot_a,
-            v=msg.robot_v,
-            p=msg.robot_p,
-            coordinate=msg.robot_coordinate,
-            enter_time=msg.robot_enter_time,
-            arrive_cp_time=msg.robot_arrive_cp_time,
-            exit_time=msg.robot_exit_time
-        )
 
 class InterInfo:
-    def __init__(self, inter=0):
-        self.inter = inter  # 交叉路口ID
+    def __init__(self, inter_id=0):
+        self.inter_id = inter_id  # 交叉路口ID
         self.robot_id_list = []  # 机器人ID列表
-        self.robot_info = []  # RobotInfo实例列表
+        self.robot_info: List[RobotInfo] = []  # RobotInfo实例列表
+
+    def update_robot_id_list(self, robot_id: int):
+        if robot_id in self.robot_id_list:
+            self.robot_id_list.remove(robot_id)
+        self.robot_id_list.append(robot_id)
+
+    def update_robot_info_list(self, new_robot_info: RobotInfo):
+        for existed_robot_info in self.robot_info:
+            if existed_robot_info.robot_id == new_robot_info.robot_id:
+                existed_robot_info.__dict__.update(new_robot_info.__dict__)        
+        self.robot_info.append(new_robot_info)            
+
 
 class InterManager:
 
     def __init__(self) -> None:
         rospy.init_node('inter_manager')
 
+        # global info
+        self.robot_info_dict: Dict[int, RobotInfo] = {}
         self.inter_info_dict: Dict[int, InterInfo] = {i: InterInfo(i) for i in range(1, 6)}
-
+        self.inter_info_dict_lock = threading.Lock()
 
         # Publishers
         self.inter_info_pubs = {i: rospy.Publisher(f'inter_info/{i}', InterInfoMsg, queue_size=1) for i in range(1, 6)}
 
         # Subscribers
+        self.subscribers = []
         self.kinematic_info_sub = rospy.Subscriber('/kinematic_info', KinematicDataArray, self.kinematic_info_cb)
 
         # Servers
@@ -64,25 +54,47 @@ class InterManager:
 
         rospy.loginfo('Intersection Manager is Online')
 
+        self.init_robot_info_subs()
+
         # 定时广播交叉路口信息
         rospy.Timer(rospy.Duration(1 / 10), self.broadcast_inter_info)
 
-    def inter_mng_cb(self, req: InterMngRequest) -> InterMngResponse:
-        """处理机器人的交叉路口管理请求"""
-        try:
-            rospy.loginfo(f'Received request from {req.robot_name}')
-            rospy.loginfo(f'Robot {req.robot_name} moving from Inter_{req.last_inter_id} to Inter_{req.curr_inter_id}')
+    def init_robot_info_subs(self):
+        for robot_id, robot_name in robot_dict.items():
+            topic = f"/{robot_name}/robot_info"
+            subscriber = rospy.Subscriber(topic, RobotInfoMsg, self.robot_info_cb, callback_args=robot_id)
+            self.subscribers.append(subscriber)
+        return
 
-            # 将请求中的机器人信息转换为RobotInfo实例
-            robot_info = RobotInfo.from_msg(req.robot_info)
+    def robot_info_cb(self, msg: InterInfoMsg, robot_id):
+        """
+        Update local robot_info_dict.
+        """
+        robot_info = RobotInfo.from_msg(msg)        
+        self.robot_info_dict[robot_id] = robot_info
+        with self.inter_info_dict_lock:
+            self.update_local_inter_info(robot_id=robot_id, robot_info=robot_info)
+        return
+    
+    def update_local_inter_info(self, robot_id, robot_info: RobotInfo):
+        for inter_id, inter_info in self.inter_info_dict.items():
+            if robot_id in inter_info.robot_id_list:
+                inter_info.update_robot_info_list(robot_info)
+                return
+
+    def inter_mng_cb(self, req: InterMngRequest) -> InterMngResponse:
+        """
+        Handle update global inter_info requeset 
+        """
+        try:
+            robot_id = req.robot_id
+            last_inter_id = req.last_inter_id
+            curr_inter_id = req.curr_inter_id
+            rospy.loginfo(f'Robot {robot_dict[robot_id]} moving from Inter_{last_inter_id} to Inter_{curr_inter_id}')
             
             # 更新交叉路口信息
-            success = self.update_inter_info(
-                robot_info=robot_info,
-                from_inter=req.last_inter_id,
-                to_inter=req.curr_inter_id,
-                timestamp=req.header.stamp
-            )
+            with self.inter_info_dict_lock:
+                success = self.update_global_inter_info(robot_id=robot_id, from_inter=last_inter_id, to_inter=curr_inter_id)
 
             # 构造响应
             if success:
@@ -98,41 +110,29 @@ class InterManager:
             resp.message = f'Error: {str(e)}'
             return resp
 
-    def update_inter_info(
-            self, 
-            robot_info: RobotInfo, 
-            from_inter: int, 
-            to_inter: int, 
-            timestamp: rospy.Time
-        ) -> bool:
-        """更新交叉路口信息"""
-        try:
+    def update_global_inter_info(self, robot_id: int, from_inter: int, to_inter: int) -> bool:
+        """
+        Update global inter_info
+        """
+        try:            
+            # 
+            updated_robot_info = self.robot_info_dict[robot_id]
+
             # 从原交叉路口移除机器人
             if from_inter in self.inter_info_dict:
                 inter_info = self.inter_info_dict[from_inter]
-                if robot_info.robot_id in inter_info.robot_id_list:
-                    inter_info.robot_id_list.remove(robot_info.robot_id)
-                    inter_info.robot_info = [
-                        info for info in inter_info.robot_info 
-                        if info.robot_id != robot_info.robot_id
-                    ]
-                    rospy.loginfo(f'Removed {robot_info.robot_name} from inter_{from_inter}')
+                if robot_id in inter_info.robot_id_list:
+                    inter_info.robot_id_list.remove(robot_id)
+                    inter_info.robot_info = [ info for info in inter_info.robot_info if info.robot_id != robot_id ]
 
             # 在新交叉路口添加机器人
             if to_inter in self.inter_info_dict:
                 inter_info = self.inter_info_dict[to_inter]
-                if robot_info.robot_id not in inter_info.robot_id_list:
-                    inter_info.robot_id_list.append(robot_info.robot_id)
-                    robot_info.robot_enter_time = timestamp.to_sec()  # 更新进入时间
-                    inter_info.robot_info.append(robot_info)
-                    rospy.loginfo(f'Added {robot_info.robot_name} to inter_{to_inter}')
-                else:
-                    # 如果机器人已经在列表中，更新其信息
-                    for i, info in enumerate(inter_info.robot_info):
-                        if info.robot_id == robot_info.robot_id:
-                            inter_info.robot_info[i] = robot_info
-                            rospy.loginfo(f'Updated info for {robot_info.robot_name} in inter_{to_inter}')
-
+                inter_info.update_robot_id_list(robot_id=robot_id)
+                inter_info.update_robot_info_list(new_robot_info=updated_robot_info)
+            
+            # 
+            rospy.loginfo(f'{robot_dict[robot_id]} removed from inter_{from_inter} & added to inter_{to_inter}')
             rospy.loginfo('Current intersection status:')
             for inter_id, info in self.inter_info_dict.items():
                 if info.robot_id_list:
@@ -145,13 +145,12 @@ class InterManager:
             return False
 
     def broadcast_inter_info(self, event):
-        """广播每个交叉路口的信息"""
-        for inter_id, inter_info in self.inter_info_dict.items():
-            if inter_id == 0:  # 跳过ID为0的交叉路口
-                continue
-                
+        """
+        Broadcast inter_info/x
+        """
+        for inter_id, inter_info in self.inter_info_dict.items():               
             msg = InterInfoMsg()
-            msg.inter_id = inter_id
+            msg.inter_id = inter_info.inter_id
             msg.robot_id_list = inter_info.robot_id_list
             
             # 转换RobotInfo为消息格式
@@ -159,11 +158,12 @@ class InterManager:
                 RobotInfoMsg(
                     robot_name=info.robot_name,
                     robot_id=info.robot_id,
-                    robot_a=info.robot_a,
+                    robot_route=info.robot_route,
                     robot_v=info.robot_v,
                     robot_p=info.robot_p,
                     robot_coordinate = info.robot_coordinate,
                     robot_enter_time=info.robot_enter_time,
+                    robot_enter_conflict=info.robot_enter_conflict,
                     robot_arrive_cp_time=info.robot_arrive_cp_time,
                     robot_exit_time=info.robot_exit_time
                 ) for info in inter_info.robot_info
@@ -172,23 +172,13 @@ class InterManager:
             # 发布消息
             if inter_id in self.inter_info_pubs:
                 self.inter_info_pubs[inter_id].publish(msg)
+        return
     
     def kinematic_info_cb(self, kinematic_data_msg: KinematicDataArray):
         """
         Annotation
         """
-        for data in kinematic_data_msg.data:
-            robot_id = data.robot_id
-            robot_coordinate = (data.pose[1], data.pose[2])
-            robot_v = data.vel[0]
-
-            for inter_info in self.inter_info_dict.values():
-                if robot_id in inter_info.robot_id_list:
-                    for robot_info in inter_info.robot_info:
-                        if robot_info.robot_id == robot_id:
-                            robot_info.robot_coordinate = robot_coordinate
-                            robot_info.robot_v = robot_v
-                            break
+        pass
 
 
 if __name__ == '__main__':
