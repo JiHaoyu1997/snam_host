@@ -90,7 +90,7 @@ class InterManager:
             robot_id = req.robot_id
             last_inter_id = req.last_inter_id
             curr_inter_id = req.curr_inter_id
-            rospy.loginfo(f'Robot {robot_dict[robot_id]} moving from Inter_{last_inter_id} to Inter_{curr_inter_id}')
+            # rospy.loginfo(f'Robot {robot_dict[robot_id]} moving from Inter_{last_inter_id} to Inter_{curr_inter_id}')
             
             # 更新交叉路口信息
             with self.inter_info_dict_lock:
@@ -118,6 +118,10 @@ class InterManager:
             # 
             updated_robot_info = self.robot_info_dict[robot_id]
 
+            # 
+            if self.checkIdAleadyExist(robot_id=robot_id, from_inter=from_inter, to_inter=to_inter):
+                rospy.logdebug_once(f"{robot_dict[robot_dict]} not been cleaned last time!")
+
             # 从原交叉路口移除机器人
             if from_inter in self.inter_info_dict:
                 inter_info = self.inter_info_dict[from_inter]
@@ -134,16 +138,22 @@ class InterManager:
             # 
             rospy.loginfo(f'{robot_dict[robot_id]} removed from inter_{from_inter} & added to inter_{to_inter}')
             rospy.loginfo('Current intersection status:')
-            for inter_id, info in self.inter_info_dict.items():
-                if info.robot_id_list:
-                    rospy.loginfo(f'Inter_{inter_id}: {[robot_dict[id] for id in info.robot_id_list]}')
+            for inter_id, inter_info in self.inter_info_dict.items():
+                if inter_info.robot_id_list:
+                    rospy.loginfo(f'Inter_{inter_id}: {[robot_dict[id] for id in inter_info.robot_id_list]}')
 
             return True
 
         except Exception as e:
             rospy.logerr(f'Error updating intersection info: {e}')
             return False
-
+        
+    def checkIdAleadyExist(self, robot_id, from_inter, to_inter):
+        for inter_info in self.inter_info_dict.values():
+            if inter_info.inter_id != from_inter and inter_info.inter_id != to_inter:
+                if robot_id in inter_info.robot_id_list:
+                    return True
+                    
     def broadcast_inter_info(self, event):
         """
         Broadcast inter_info/x

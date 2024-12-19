@@ -44,14 +44,14 @@ class TaskDispatcher:
     
     def assign_task_list(self, test_mode: str = 'default') -> list:  
         if test_mode != 'default':
-            return self.test_mode_func(test_mode)
+            return 0, self.test_mode_func(test_mode)
 
         if self.task_assign_count == self.task_total_count:
             rospy.loginfo_once('No more tasks')
-            return []
+            return 0, []
         
         self.task_assign_count += 1
-        return self.all_task_lists_dict[self.task_assign_count - 1]
+        return self.task_assign_count, self.all_task_lists_dict[self.task_assign_count - 1]
     
     def test_mode_func(self, test_mode):
         if test_mode == 'left':
@@ -64,4 +64,4 @@ class TaskDispatcher:
             return [6, 2, 5, 4, 1, 2, 3, 5, 2, 1, 4, 5, 2, 6]
         
         if test_mode == 'test':
-            return [6, 2, 3, 4, 5, 3, 2, 6]
+            return [6, 2, 1, 3, 2, 1, 3, 5, 4, 3, 2, 6]

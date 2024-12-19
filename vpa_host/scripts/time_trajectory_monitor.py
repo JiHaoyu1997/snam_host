@@ -38,7 +38,7 @@ class TimeTrajectoryMonitor:
 
         rospy.loginfo('Time Trajectory Monitor is Online')
 
-        self.timer = rospy.Timer(rospy.Duration(1 / 20), self.pub_kinematic_data)
+        self.timer = rospy.Timer(rospy.Duration(1 / 10), self.pub_kinematic_data)
 
 
     def pose_array_sub_cb(self, msg: AprilTagDetectionArray):

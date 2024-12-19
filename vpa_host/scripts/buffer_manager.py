@@ -51,10 +51,10 @@ class BufferManager:
         if robot_name not in self.robot_buffer_info:
             self.robot_buffer_info[robot_name] = {'task_list': []}
 
-        task_list = self.task_dispatcher.assign_task_list(test_mode=self.test_mode)
+        task_index, task_list = self.task_dispatcher.assign_task_list(test_mode=self.test_mode)
         self.robot_buffer_info[robot_name]['task_list'] = task_list
         resp = AssignTaskResponse(task_list = task_list)
-        rospy.loginfo(f"Assigned {robot_name} Task List: {task_list}")        
+        rospy.loginfo(f"Assigned {robot_name} Task List {task_index}: {task_list}")        
         return resp
         
 if __name__ == '__main__':

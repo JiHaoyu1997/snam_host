@@ -1,19 +1,13 @@
 from vpa_host.msg import RobotInfo as RobotInfoMsg
 
 robot_dict = {
-    0:'origin',
     1:'mingna',
     2:'vivian',
-    3:'gina',
-    4:'lucas',
-    5:'daisy',
     6:'henry',
     7:'dorie',
     8:'luna',
     9:'robert',
     10:'fiona',
-    11:'bingda',
-    12:'jetson1'
 }
 
 def find_id_by_robot_name(robot_name):
