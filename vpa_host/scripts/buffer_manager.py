@@ -41,8 +41,11 @@ class BufferManager:
 
         
         # Init Log
-        rospy.loginfo('Buffer Manager is Online')
 
+        if self.test_mode == "test":
+            rospy.loginfo("Buffer Manager in test-mode is Online")
+        else:
+            rospy.loginfo('Buffer Manager is Online')
 
     # Methods
     def assign_task_cb(self, req: AssignTaskRequest) -> None:

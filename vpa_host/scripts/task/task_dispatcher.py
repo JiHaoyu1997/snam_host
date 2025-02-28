@@ -64,4 +64,4 @@ class TaskDispatcher:
             return [6, 2, 5, 4, 1, 2, 3, 5, 2, 1, 4, 5, 2, 6]
         
         if test_mode == 'test':
-            return [6, 2, 1, 3, 2, 1, 3, 5, 4, 3, 2, 6]
+            return [6,2,3,4,1,2,6]

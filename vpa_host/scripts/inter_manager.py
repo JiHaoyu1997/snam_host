@@ -38,6 +38,7 @@ class InterManager:
         rospy.init_node('inter_manager')
 
         # global info
+        self.all_inter_empty = True
         self.robot_info_dict: Dict[int, RobotInfo] = {}
         self.inter_info_dict: Dict[int, InterInfo] = {i: InterInfo(i) for i in range(1, 6)}
         self.inter_info_dict_lock = threading.Lock()
@@ -57,7 +58,7 @@ class InterManager:
         self.init_robot_info_subs()
 
         # 定时广播交叉路口信息
-        rospy.Timer(rospy.Duration(1 / 10), self.broadcast_inter_info)
+        rospy.Timer(rospy.Duration(1 / 20), self.broadcast_inter_info)
 
     def init_robot_info_subs(self):
         for robot_id, robot_name in robot_dict.items():
@@ -120,7 +121,7 @@ class InterManager:
 
             # 
             if self.checkIdAleadyExist(robot_id=robot_id, from_inter=from_inter, to_inter=to_inter):
-                rospy.logdebug_once(f"{robot_dict[robot_dict]} not been cleaned last time!")
+                rospy.logwarn_once(f"{robot_dict[robot_id]} not been cleaned last time!")
 
             # 从原交叉路口移除机器人
             if from_inter in self.inter_info_dict:
@@ -141,6 +142,9 @@ class InterManager:
             for inter_id, inter_info in self.inter_info_dict.items():
                 if inter_info.robot_id_list:
                     rospy.loginfo(f'Inter_{inter_id}: {[robot_dict[id] for id in inter_info.robot_id_list]}')
+                    self.all_inter_empty = False
+            if self.all_inter_empty:
+                rospy.logwarn('All Inter Empty')
 
             return True
 
@@ -152,6 +156,8 @@ class InterManager:
         for inter_info in self.inter_info_dict.values():
             if inter_info.inter_id != from_inter and inter_info.inter_id != to_inter:
                 if robot_id in inter_info.robot_id_list:
+                    inter_info.robot_id_list.remove(robot_id)
+                    inter_info.robot_info = [ info for info in inter_info.robot_info if info.robot_id != robot_id ]
                     return True
                     
     def broadcast_inter_info(self, event):
@@ -165,19 +171,24 @@ class InterManager:
             
             # 转换RobotInfo为消息格式
             msg.robot_info = [
-                RobotInfoMsg(
-                    robot_name=info.robot_name,
-                    robot_id=info.robot_id,
-                    robot_route=info.robot_route,
-                    robot_v=info.robot_v,
-                    robot_p=info.robot_p,
-                    robot_coordinate = info.robot_coordinate,
-                    robot_enter_time=info.robot_enter_time,
-                    robot_enter_conflict=info.robot_enter_conflict,
-                    robot_arrive_cp_time=info.robot_arrive_cp_time,
-                    robot_exit_time=info.robot_exit_time
-                ) for info in inter_info.robot_info
-            ]
+            RobotInfoMsg(
+                robot_name=info.robot_name,
+                robot_id=info.robot_id,
+                robot_route=info.robot_route,
+                robot_v=info.robot_v,
+                robot_p=info.robot_p,
+                robot_coordinate=info.robot_coordinate,
+                robot_enter_conflict=info.robot_enter_conflict,
+
+                # time info
+                robot_enter_lane_time=info.robot_enter_lane_time,
+                robot_estimated_arrive_conflict_time=info.robot_estimated_arrive_conflict_time,
+                robot_arrival_conflict_time=info.robot_arrival_conflict_time,
+                robot_enter_conflict_time=info.robot_enter_conflict_time,
+                robot_arrive_cp_time=info.robot_arrive_cp_time,
+                robot_exit_time=info.robot_exit_time
+            ) for info in inter_info.robot_info
+        ]
             
             # 发布消息
             if inter_id in self.inter_info_pubs:

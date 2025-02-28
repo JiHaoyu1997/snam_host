@@ -18,12 +18,16 @@ class TimeTrajectoryMonitor:
         # Initialize the ROS node
         rospy.init_node('time_trajectory_monitor')
 
+        # Coodinate of Origin
+        self.origin_x = 0
+        self.origin_y = 0
+
         # Data storage and thread management
         self.pose_data_dict = {}  # Historical data for each tag: {robot_id: [(timestamp, x, y, yaw)]}
         self.velocity_dict = {}  # Smoothed velocity for each tag: {robot_id: (linear_velocity, angular_velocity)}
         self.max_velocity_dict = {}
         self.zero_vel_counter = 0
-        self.lock = threading.Lock()  # Thread lock for data synchronization
+        self.lock = threading.Lock()  # Thread lock for data synchronizations
 
         # Publisher
         self.kinematic_info_pub = rospy.Publisher('/kinematic_info', KinematicDataArray, queue_size=10)
@@ -61,6 +65,9 @@ class TimeTrajectoryMonitor:
                 robot_id = tag_id
                 
                 if robot_id == 0:
+                    self.origin_x = round(detection.pose.pose.pose.position.x, 3)
+                    self.origin_y = round(detection.pose.pose.pose.position.y, 3)
+                    # print(self.origin_x, self.origin_y)
                     continue
 
                 x = detection.pose.pose.pose.position.x
@@ -80,7 +87,9 @@ class TimeTrajectoryMonitor:
 
                 
                 # Round x, y, and yaw to 3 decimal places
-                x, y, yaw = round(x, 3), round(y, 3), round(yaw, 3)
+                x, y, yaw = round(self.origin_x - x, 3), round(y - self.origin_y, 3), round(yaw, 3)
+                # print(robot_id, self.origin_x, x)
+                # print(robot_id, self.origin_y, y)
 
                 self.pose_data_dict[robot_id].append((timestamp, x, y, yaw))
                 if len(self.pose_data_dict[robot_id]) > 10:  # Limit buffer length to 10
