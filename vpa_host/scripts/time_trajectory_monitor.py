@@ -88,8 +88,7 @@ class TimeTrajectoryMonitor:
                 
                 # Round x, y, and yaw to 3 decimal places
                 x, y, yaw = round(self.origin_x - x, 3), round(y - self.origin_y, 3), round(yaw, 3)
-                # print(robot_id, self.origin_x, x)
-                # print(robot_id, self.origin_y, y)
+                # print(robot_id, (x, y))
 
                 self.pose_data_dict[robot_id].append((timestamp, x, y, yaw))
                 if len(self.pose_data_dict[robot_id]) > 10:  # Limit buffer length to 10

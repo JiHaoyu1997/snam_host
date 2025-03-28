@@ -42,7 +42,19 @@ class TaskDispatcher:
         self.task_total_count  = len(self.all_task_lists_dict)
         rospy.loginfo('generate all task lists to the server')
     
-    def assign_task_list(self, test_mode: str = 'default') -> list:  
+    def assign_task_list(self, robot_name, test_mode: str = 'default') -> list: 
+        if robot_name == "mingna":
+            return 0, [6,2,3,4,5,2,6]
+        
+        if robot_name == "henry":
+            return 0, [6,2,5,3,1,2,6]
+
+        if robot_name == "dorie":
+            return 0, [6,2,5,4,3,1,2,6]
+        
+        if robot_name == "luna":
+            return 0, [6,2,5,4,1,3,5,2,6]
+
         if test_mode != 'default':
             return 0, self.test_mode_func(test_mode)
 

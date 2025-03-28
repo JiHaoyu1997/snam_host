@@ -16,7 +16,7 @@ def tag_detections_callback(msg):
     for detection in msg.detections:
         tag_id = detection.id[0]  # 获取 Tag ID
         Z = detection.pose.pose.pose.position.z  # AprilTag 到相机的距离（m）
-        tag_size = 0.1  # 你需要设置 AprilTag 真实尺寸 (单位：m)
+        tag_size = 0.12  # 你需要设置 AprilTag 真实尺寸 (单位：m)
         tag_width_pixels = detection.size[0]  # AprilTag 在图像中的宽度 (像素)
         
         if tag_width_pixels > 0:

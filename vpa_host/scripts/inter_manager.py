@@ -28,7 +28,9 @@ class InterInfo:
     def update_robot_info_list(self, new_robot_info: RobotInfo):
         for existed_robot_info in self.robot_info:
             if existed_robot_info.robot_id == new_robot_info.robot_id:
-                existed_robot_info.__dict__.update(new_robot_info.__dict__)        
+                existed_robot_info.__dict__.update(new_robot_info.__dict__)       
+                return
+             
         self.robot_info.append(new_robot_info)            
 
 
@@ -58,7 +60,7 @@ class InterManager:
         self.init_robot_info_subs()
 
         # 定时广播交叉路口信息
-        rospy.Timer(rospy.Duration(1 / 20), self.broadcast_inter_info)
+        rospy.Timer(rospy.Duration(1 / 40), self.broadcast_inter_info)
 
     def init_robot_info_subs(self):
         for robot_id, robot_name in robot_dict.items():
@@ -74,12 +76,18 @@ class InterManager:
         robot_info = RobotInfo.from_msg(msg)        
         self.robot_info_dict[robot_id] = robot_info
         with self.inter_info_dict_lock:
-            self.update_local_inter_info(robot_id=robot_id, robot_info=robot_info)
+            self.update_local_inter_info(robot_info=robot_info)
         return
     
-    def update_local_inter_info(self, robot_id, robot_info: RobotInfo):
+    def update_local_inter_info(self, robot_info: RobotInfo):
+        robot_id = robot_info.robot_id
         for inter_id, inter_info in self.inter_info_dict.items():
             if robot_id in inter_info.robot_id_list:
+                
+                route = robot_info.robot_route
+                if route[1] != inter_id:
+                    rospy.logwarn(f"{robot_id} with route={route} should not in inter {inter_id}")
+
                 inter_info.update_robot_info_list(robot_info)
                 return
 
